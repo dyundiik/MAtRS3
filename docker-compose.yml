@@ -1,0 +1,134 @@
+services:
+  frontend:
+    build: ./frontend
+    ports: ["8080:80"]
+    depends_on: [gateway]
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  gateway:
+    build: ./gateway
+    ports: ["8000:80"]
+    depends_on: [auth-service, trip-service, packing-service, categorization-service]
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  auth-service:
+    build: ./services/auth
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-tripack}:${POSTGRES_PASSWORD:-tripack_dev_password}@postgres:5432/auth_db
+      JWT_SECRET: ${JWT_SECRET:-dev_only_change_this_secret}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  trip-service:
+    build: ./services/trip
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-tripack}:${POSTGRES_PASSWORD:-tripack_dev_password}@postgres:5432/trip_db
+      JWT_SECRET: ${JWT_SECRET:-dev_only_change_this_secret}
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  packing-service:
+    build: ./services/packing
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-tripack}:${POSTGRES_PASSWORD:-tripack_dev_password}@postgres:5432/packing_db
+      JWT_SECRET: ${JWT_SECRET:-dev_only_change_this_secret}
+      CATEGORY_SERVICE_URL: http://categorization-service:8000
+      TRIP_SERVICE_URL: http://trip-service:8000
+    depends_on:
+      postgres: {condition: service_healthy}
+      categorization-service: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  categorization-service:
+    build: ./services/categorization
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-dev_only_change_this_secret}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tripack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tripack_dev_password}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tripack} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports: ["9090:9090"]
+    depends_on: [auth-service, trip-service, packing-service, categorization-service]
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin_dev_password}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+    networks: [tripack-net]
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-tripack}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-tripack_mq_password}
+    ports: ["15672:15672"]
+    networks: [tripack-net]
+    restart: unless-stopped
+
+networks:
+  tripack-net:
+    driver: bridge
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

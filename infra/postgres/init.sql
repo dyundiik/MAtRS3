@@ -1,0 +1,3 @@
+CREATE DATABASE auth_db;
+CREATE DATABASE trip_db;
+CREATE DATABASE packing_db;

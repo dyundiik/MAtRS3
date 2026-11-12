@@ -1,0 +1,33 @@
+### 1. Register
+POST http://localhost:8000/api/auth/auth/register
+Content-Type: application/json
+
+{"email":"student@example.com","password":"Student123!","full_name":"Test Student"}
+
+### 2. Login; copy access_token to token variable manually
+POST http://localhost:8000/api/auth/auth/login
+Content-Type: application/json
+
+{"email":"student@example.com","password":"Student123!"}
+
+### 3. Profile (replace TOKEN)
+GET http://localhost:8000/api/auth/users/me
+Authorization: Bearer TOKEN
+
+### 4. Create trip
+POST http://localhost:8000/api/trips/trips
+Authorization: Bearer TOKEN
+Content-Type: application/json
+
+{"title":"Відпустка в Карпатах","trip_type":"похід","start_date":"2026-12-20","end_date":"2026-12-25","description":"Зимовий похід"}
+
+### 5. Create packing list (replace trip_id)
+POST http://localhost:8000/api/packing/lists
+Authorization: Bearer TOKEN
+Content-Type: application/json
+
+{"trip_id":1,"title":"Речі для Карпат","trip_type":"похід"}
+
+### 6. Filter by category
+GET http://localhost:8000/api/packing/lists/1/items?category=одяг
+Authorization: Bearer TOKEN
